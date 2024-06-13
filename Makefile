@@ -1,29 +1,27 @@
-# Nom du compilateur Java
-JAVAC = javac
+# Répertoire des sources
+SRC_DIR := src
+# Répertoire de destination pour les fichiers .class
+BUILD_DIR := build
+# Répertoire des bibliothèques
+LIB_DIR := lib
+# Fichier JAR de Gson
+GSON_JAR := $(LIB_DIR)/gson-2.11.0.jar
 
-# Options de compilation
-JFLAGS = 
+# Commande de build
+build:
+	@echo Construction du projet...
+	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+	@javac -cp "$(GSON_JAR)" -d "$(BUILD_DIR)" -sourcepath "$(SRC_DIR)" "$(SRC_DIR)/*.java"
 
-# Fichiers source
-SOURCES = Main.java Contact.java ContactManager.java
-
-# Fichiers compilés
-CLASSES = $(SOURCES:.java=.class)
-
-# Tâche par défaut
-default: run
-
-# Compile les fichiers Java
-%.class: %.java
-	$(JAVAC) $(JFLAGS) $<
-
-# Compile tous les fichiers source
-compile: $(CLASSES)
-
-# Exécute le programme
-run: compile
-	java Main
-
+# Commande pour nettoyer le projet (supprimer les fichiers .class)
 clean:
-	@echo "Nettoyage des fichiers compilés..."
-	rm -f *.class
+	@echo Nettoyage...
+	@if exist $(BUILD_DIR) rmdir /S /Q $(BUILD_DIR)
+
+# Commande pour exécuter le programme
+run: build
+	@echo Exécution du programme...
+	@java -cp "$(BUILD_DIR);$(GSON_JAR)" ContactManager
+
+# Option 'phony' pour indiquer que 'clean', 'run', et 'build' ne sont pas des fichiers
+.PHONY: build clean run

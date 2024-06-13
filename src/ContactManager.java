@@ -1,12 +1,16 @@
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DocumentFilter;
 import javax.swing.text.PlainDocument;
-import java.awt.*;
-import java.awt.event.*;
-import java.io.*;
+
 
 public class ContactManager extends JFrame {
     private DefaultTableModel contactTableModel;
@@ -14,31 +18,44 @@ public class ContactManager extends JFrame {
     private JTextField nameField;
     private JTextField phoneField;
     private JTextField emailField;
+    private JComboBox<String> groupComboBox;
     private JButton addButton;
     private JButton editButton;
     private JButton saveButton;
     private JButton deleteButton;
-    private File contactsFile = new File("contacts.txt");
+    private File contactsFile = new File("contacts.json");
     private int selectedRow = -1;
+    private int selectedColumn = -1;
+    private Gson gson;
 
     public ContactManager() {
         setTitle("Contact Manager");
-        setSize(520, 400); // Réduction de la taille de la fenêtre
+        setSize(520, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
-        setLocationRelativeTo(null); // Centrage de la fenêtre
+        setLocationRelativeTo(null);
 
-        String[] columnNames = {"Nom", "Numero de telephone", "Adresse email"};
+        gson = new GsonBuilder().setPrettyPrinting().create(); // Utilisation de Gson avec mise en forme JSON
+
+        String[] columnNames = {"Nom", "Numero de telephone", "Adresse email", "Groupe"};
         contactTableModel = new DefaultTableModel(columnNames, 0);
         contactTable = new JTable(contactTableModel);
         contactTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        contactTable.getColumnModel().getColumn(0).setPreferredWidth(150); // Setting column widths
-        contactTable.getColumnModel().getColumn(1).setPreferredWidth(150);
-        contactTable.getColumnModel().getColumn(2).setPreferredWidth(205);
-        contactTable.getTableHeader().setReorderingAllowed(false); // Disable column reordering
-        contactTable.setAutoCreateRowSorter(true); // Enable row sorting
-        contactTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // Single row selection
-        contactTable.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS); // Allow automatic resizing of columns
+        contactTable.getTableHeader().setReorderingAllowed(false);
+        contactTable.setAutoCreateRowSorter(true);
+        contactTable.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+
+        // Ajout d'un ListSelectionListener pour détecter les changements de sélection dans la JTable
+        ListSelectionModel selectionModel = contactTable.getSelectionModel();
+        selectionModel.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        selectionModel.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                selectedRow = contactTable.getSelectedRow();
+                selectedColumn = contactTable.getSelectedColumn();
+                updateButtonState();
+                loadSelectedContact();
+            }
+        });
 
         JScrollPane tableScrollPane = new JScrollPane(contactTable);
         add(tableScrollPane, BorderLayout.CENTER);
@@ -55,6 +72,8 @@ public class ContactManager extends JFrame {
         inputPanel.add(new JLabel("Numero de telephone:"), gbc);
         gbc.gridy++;
         inputPanel.add(new JLabel("Adresse email:"), gbc);
+        gbc.gridy++;
+        inputPanel.add(new JLabel("Groupe:"), gbc);
 
         gbc.gridx = 1;
         gbc.gridy = 0;
@@ -65,11 +84,14 @@ public class ContactManager extends JFrame {
         inputPanel.add(nameField, gbc);
         gbc.gridy++;
         phoneField = new JTextField(20);
-        restrictToNumbers(phoneField); // Appliquer le filtre de chiffres
+        restrictToNumbers(phoneField);
         inputPanel.add(phoneField, gbc);
         gbc.gridy++;
         emailField = new JTextField(20);
         inputPanel.add(emailField, gbc);
+        gbc.gridy++;
+        groupComboBox = new JComboBox<>(new String[]{"Famille", "Amis", "Travail"});
+        inputPanel.add(groupComboBox, gbc);
 
         add(inputPanel, BorderLayout.NORTH);
 
@@ -111,31 +133,34 @@ public class ContactManager extends JFrame {
         nameField.setText("");
         phoneField.setText("");
         emailField.setText("");
+        groupComboBox.setSelectedIndex(0);
     }
 
     private void setFieldsEditable(boolean editable) {
         nameField.setEditable(editable);
         phoneField.setEditable(editable);
         emailField.setEditable(editable);
+        groupComboBox.setEnabled(editable);
     }
 
     private void addContact() {
         String name = nameField.getText();
         String phone = phoneField.getText();
         String email = emailField.getText();
-        if (!name.isEmpty() && !phone.isEmpty() && !email.isEmpty()) {
-            contactTableModel.addRow(new Object[]{name, phone, email});
+        String group = (String) groupComboBox.getSelectedItem();
+        if (!name.isEmpty() && !phone.isEmpty() && !email.isEmpty() && group != null) {
+            contactTableModel.addRow(new Object[]{name, phone, email, group});
             saveContacts();
             clearFields();
-            setFieldsEditable(true); // Set fields to editable for new input
-            contactTable.clearSelection(); // Clear the selection to reset buttons
+            setFieldsEditable(true);
+            contactTable.clearSelection();
         } else {
             JOptionPane.showMessageDialog(this, "Veuillez remplir tous les champs.", "Erreur", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void editContact() {
-        if (selectedRow != -1) {
+        if (selectedRow != -1 && selectedColumn != -1) {
             setFieldsEditable(true);
             saveButton.setEnabled(true);
         }
@@ -146,10 +171,11 @@ public class ContactManager extends JFrame {
             contactTableModel.setValueAt(nameField.getText(), selectedRow, 0);
             contactTableModel.setValueAt(phoneField.getText(), selectedRow, 1);
             contactTableModel.setValueAt(emailField.getText(), selectedRow, 2);
+            contactTableModel.setValueAt(groupComboBox.getSelectedItem(), selectedRow, 3);
             saveContacts();
             setFieldsEditable(false);
             saveButton.setEnabled(false);
-            contactTable.clearSelection(); // Clear the selection to reset buttons
+            contactTable.clearSelection();
         }
     }
 
@@ -158,38 +184,58 @@ public class ContactManager extends JFrame {
             contactTableModel.removeRow(selectedRow);
             saveContacts();
             clearFields();
-            setFieldsEditable(true); // Set fields to editable for new input
-            contactTable.clearSelection(); // Clear the selection to reset buttons
+            setFieldsEditable(true);
+            contactTable.clearSelection();
         }
     }
 
     private void loadContacts() {
         if (contactsFile.exists()) {
-            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(contactsFile))) {
-                while (true) {
-                    try {
-                        Contact contact = (Contact) ois.readObject();
-                        contactTableModel.addRow(new Object[]{contact.getName(), contact.getPhoneNumber(), contact.getEmail()});
-                    } catch (EOFException e) {
-                        break;
-                    }
+            try {
+                String jsonContent = readJsonFile(contactsFile);
+                Contact[] contacts = gson.fromJson(jsonContent, Contact[].class);
+                for (Contact contact : contacts) {
+                    contactTableModel.addRow(new Object[]{contact.getName(), contact.getPhoneNumber(), contact.getEmail(), contact.getGroup()});
                 }
-            } catch (IOException | ClassNotFoundException e) {
+            } catch (IOException e) {
                 e.printStackTrace();
             }
         }
     }
 
     private void saveContacts() {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(contactsFile))) {
-            for (int i = 0; i < contactTableModel.getRowCount(); i++) {
-                String name = (String) contactTableModel.getValueAt(i, 0);
-                String phone = (String) contactTableModel.getValueAt(i, 1);
-                String email = (String) contactTableModel.getValueAt(i, 2);
-                oos.writeObject(new Contact(name, phone, email));
-            }
+        List<Contact> contacts = new ArrayList<>();
+        for (int i = 0; i < contactTableModel.getRowCount(); i++) {
+            String name = (String) contactTableModel.getValueAt(i, 0);
+            String phone = (String) contactTableModel.getValueAt(i, 1);
+            String email = (String) contactTableModel.getValueAt(i, 2);
+            String group = (String) contactTableModel.getValueAt(i, 3);
+            Contact contact = new Contact(name, phone, email, group);
+            contacts.add(contact);
+        }
+
+        String json = gson.toJson(contacts);
+        try {
+            writeJsonFile(json, contactsFile);
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private String readJsonFile(File file) throws IOException {
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line);
+            }
+        }
+        return content.toString();
+    }
+
+    private void writeJsonFile(String content, File file) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+            writer.write(content);
         }
     }
 
@@ -213,48 +259,36 @@ public class ContactManager extends JFrame {
             }
 
             private boolean containsOnlyNumbers(String text) {
-                return text.matches("\\d*"); // Regex to match digits
+                return text.matches("\\d*");
             }
         });
     }
 
+    private void updateButtonState() {
+        if (selectedRow != -1 && selectedColumn != -1) {
+            editButton.setEnabled(true);
+            deleteButton.setEnabled(true);
+        } else {
+            editButton.setEnabled(false);
+            deleteButton.setEnabled(false);
+        }
+    }
+
+    private void loadSelectedContact() {
+        if (selectedRow != -1 && selectedRow < contactTableModel.getRowCount()) {
+            String name = (String) contactTableModel.getValueAt(selectedRow, 0);
+            String phone = (String) contactTableModel.getValueAt(selectedRow, 1);
+            String email = (String) contactTableModel.getValueAt(selectedRow, 2);
+            String group = (String) contactTableModel.getValueAt(selectedRow, 3);
+            nameField.setText(name);
+            phoneField.setText(phone);
+            emailField.setText(email);
+            groupComboBox.setSelectedItem(group);
+        }
+    }
+
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(ContactManager::new);
+        SwingUtilities.invokeLater(() -> new ContactManager());
     }
 }
 
-class Contact implements Serializable {
-    private String name;
-    private String phoneNumber;
-    private String email;
-
-    public Contact(String name, String phoneNumber, String email) {
-        this.name = name;
-        this.phoneNumber = phoneNumber;
-        this.email = email;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getPhoneNumber() {
-        return phoneNumber;
-    }
-
-    public void setPhoneNumber(String phoneNumber) {
-        this.phoneNumber = phoneNumber;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-}
